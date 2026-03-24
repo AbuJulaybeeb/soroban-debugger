@@ -162,7 +162,10 @@ pub enum DebugRequest {
     GetBudget,
 
     /// Set a breakpoint
-    SetBreakpoint { function: String },
+    SetBreakpoint {
+        function: String,
+        condition: Option<String>,
+    },
 
     /// Clear a breakpoint
     ClearBreakpoint { function: String },
