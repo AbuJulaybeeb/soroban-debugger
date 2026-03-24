@@ -572,15 +572,37 @@ fn analyze_unbounded_iteration_static(wasm_bytes: &[u8]) -> UnboundedStaticSigna
 }
 
 fn is_storage_read_import(module: &str, name: &str) -> bool {
-    let module = module.to_ascii_lowercase();
-    let name = name.to_ascii_lowercase();
+    const BASES: &[&str] = &[
+        "storageget",
+        "storagehas",
+        "storagenext",
+        "storageiter",
+        "getcontractdata",
+        "hascontractdata",
+        "mapget",
+        "vecget",
+    ];
 
-    (module.contains("env") || module.contains("soroban"))
-        && (name.contains("storage")
-            && (name.contains("get")
-                || name.contains("has")
-                || name.contains("next")
-                || name.contains("iter")))
+    if !is_env_like_module(module) {
+        return false;
+    }
+
+    let n = canonicalize_ascii(name);
+    for base in BASES {
+        if n == *base {
+            return true;
+        }
+        if n.starts_with(base) {
+            let suffix = &n[base.len()..];
+            if let Some(rest) = suffix.strip_prefix('v') {
+                if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn analyze_unbounded_iteration_dynamic(trace: &[DynamicTraceEvent]) -> Option<SecurityFinding> {
@@ -999,5 +1021,47 @@ mod tests {
     fn static_signal_false_for_non_wasm_bytes() {
         let signal = analyze_unbounded_iteration_static(&[1, 2, 3, 4, 5]);
         assert!(!signal.suspicious);
+    }
+
+    // -----------------------------------------------------------------------
+    // is_storage_read_import — variant name and module matching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn storage_read_import_detects_known_variants() {
+        let cases = [
+            ("env", "storage_get"),
+            ("env", "storage_has"),
+            ("env", "storage_next"),
+            ("env", "storage_iter"),
+            ("env", "get_contract_data"),
+            ("env", "has_contract_data"),
+            ("env", "map_get"),
+            ("env", "vec_get"),
+            ("soroban_env", "storage_get"),
+            ("soroban-env-host", "storage_get_v2"),
+            ("soroban_env_host", "get_contract_data_v3"),
+        ];
+        for (module, name) in cases {
+            assert!(
+                is_storage_read_import(module, name),
+                "expected is_storage_read_import to match {module}::{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn storage_read_import_ignores_unrelated_names() {
+        assert!(!is_storage_read_import("env", "reinvoke_storage_getter"));
+        assert!(!is_storage_read_import("env", "storage_put"));
+        assert!(!is_storage_read_import("env", "log_get"));
+        assert!(!is_storage_read_import("env", "invoke_contract"));
+    }
+
+    #[test]
+    fn storage_read_import_ignores_unrelated_modules() {
+        assert!(!is_storage_read_import("not_env", "storage_get"));
+        assert!(!is_storage_read_import("mylib", "storage_get"));
+        assert!(!is_storage_read_import("environments", "storage_get"));
     }
 }
