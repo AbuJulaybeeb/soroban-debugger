@@ -104,6 +104,7 @@ rustyline = "13.0"
 
 # Snapshot loading
 soroban-ledger-snapshot = "22.0.2"
+cargo-llvm-cov = "0.8.5"
 
 
 [dev-dependencies]
